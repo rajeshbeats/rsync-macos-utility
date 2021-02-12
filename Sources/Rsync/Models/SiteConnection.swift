@@ -36,3 +36,13 @@ public struct SiteConnection: Codable {
     }
 
 }
+
+public extension SiteConnection {
+
+    var remoteAddress: String { "\(username)@\(server)::\(username)" }
+
+    var remoteSyncAddress: String { remoteAddress + "/sync/"}
+
+    var localSyncPath: String { localPath + "/sync/" }
+
+}
