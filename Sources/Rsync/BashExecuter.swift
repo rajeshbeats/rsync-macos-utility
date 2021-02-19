@@ -23,6 +23,9 @@ public class BashExecuter {
 
     private var currentProcess: Process?
     private let successCheck: String
+    private var output: String?
+    private var taskQueue: DispatchQueue?
+
 
     init(successCheck: String) {
         self.successCheck = successCheck
@@ -43,12 +46,12 @@ public class BashExecuter {
             callback(.failure(.alreadyRunning))
             return
         }
+        taskQueue = DispatchQueue.global(qos: DispatchQoS.QoSClass.background)
 
-        let taskQueue = DispatchQueue.global(qos: DispatchQoS.QoSClass.background)
-
-        taskQueue.async { [weak self] in
+        taskQueue?.async { [weak self] in
             guard let self = self else { return }
-
+            debugPrint("♻️ BashExecuter: Process preparing")
+            self.output = nil
             let task = Process()
             self.currentProcess = task
             task.launchPath = Bundle.module.path(forResource: file, ofType: type)
@@ -60,15 +63,15 @@ public class BashExecuter {
             task.standardError = pipe
             let outHandle = pipe.fileHandleForReading
             outHandle.waitForDataInBackgroundAndNotify()
-            var output: String?
-            self.fileHandlerObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.NSFileHandleDataAvailable, object: nil, queue: nil) {  _ in
+
+            self.fileHandlerObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.NSFileHandleDataAvailable, object: nil, queue: nil) {  [weak self] _ in
                 let data = outHandle.availableData
                 guard data.count > 0 else {
                     outHandle.waitForDataInBackgroundAndNotify()
                     return
                 }
-                output = String(data: data, encoding: .utf8)
-                debugPrint("♻️ BashExecuter: Process output: \(output ?? "")")
+                self?.output = String(data: data, encoding: .utf8)
+                debugPrint("♻️ BashExecuter: Process output: \(self?.output ?? "")")
                 outHandle.waitForDataInBackgroundAndNotify()
             }
 
@@ -78,10 +81,11 @@ public class BashExecuter {
                 debugPrint("♻️ BashExecuter: Process terminated with status: \(task.terminationStatus)")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     self.clearObserver()
-                    if output?.trimmingCharacters(in: .whitespacesAndNewlines) == self.successCheck {
+                    if self.output?.trimmingCharacters(in: .whitespacesAndNewlines) == self.successCheck {
                         callback(.success(true))
                     } else {
-                        debugPrint("♻️⚠️ BashExecuter: Success Check failed")
+                        debugPrint("♻️⚠️ BashExecuter: Success Check failed - \(self.output ?? "")")
+                        debugPrint("♻️⚠️ BashExecuter: info - \(info)")
                         callback(.failure(.unknown))
                     }
                 }
@@ -106,6 +110,7 @@ public class BashExecuter {
         NotificationCenter.default.removeObserver(terminationObserver as Any)
         terminationObserver = nil
         terminationObserver = nil
+        taskQueue = nil
     }
     
 }
