@@ -44,50 +44,59 @@ public class BashExecuter {
             return
         }
 
-        let task = Process()
-        currentProcess = task
-        task.launchPath = Bundle.module.path(forResource: file, ofType: type)
-        task.currentDirectoryPath = dirPath
-        task.arguments = args
-        
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = pipe
-        let outHandle = pipe.fileHandleForReading
-        outHandle.waitForDataInBackgroundAndNotify()
-        var output: String?
-        fileHandlerObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.NSFileHandleDataAvailable, object: nil, queue: nil) {  _ in
-            let data = outHandle.availableData
-            guard data.count > 0 else {
-                outHandle.waitForDataInBackgroundAndNotify()
-                return
-            }
-            output = String(data: data, encoding: .utf8)
-            debugPrint("♻️ BashExecuter: Process output: \(output ?? "")")
-            outHandle.waitForDataInBackgroundAndNotify()
-        }
+        let taskQueue = DispatchQueue.global(qos: DispatchQoS.QoSClass.background)
 
-
-        terminationObserver = NotificationCenter.default.addObserver(forName: Process.didTerminateNotification, object: nil, queue: nil) { [weak self] info in
+        taskQueue.async { [weak self] in
             guard let self = self else { return }
-            debugPrint("♻️ BashExecuter: Process terminated with status: \(task.terminationStatus)")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.clearObserver()
-                if output?.trimmingCharacters(in: .whitespacesAndNewlines) == self.successCheck {
-                    callback(.success(true))
-                } else {
-                    debugPrint("♻️⚠️ BashExecuter: Success Check failed")
-                    callback(.failure(.unknown))
+
+            let task = Process()
+            self.currentProcess = task
+            task.launchPath = Bundle.module.path(forResource: file, ofType: type)
+            task.currentDirectoryPath = dirPath
+            task.arguments = args
+
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = pipe
+            let outHandle = pipe.fileHandleForReading
+            outHandle.waitForDataInBackgroundAndNotify()
+            var output: String?
+            self.fileHandlerObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.NSFileHandleDataAvailable, object: nil, queue: nil) {  _ in
+                let data = outHandle.availableData
+                guard data.count > 0 else {
+                    outHandle.waitForDataInBackgroundAndNotify()
+                    return
+                }
+                output = String(data: data, encoding: .utf8)
+                debugPrint("♻️ BashExecuter: Process output: \(output ?? "")")
+                outHandle.waitForDataInBackgroundAndNotify()
+            }
+
+
+            self.terminationObserver = NotificationCenter.default.addObserver(forName: Process.didTerminateNotification, object: nil, queue: nil) { [weak self] info in
+                guard let self = self else { return }
+                debugPrint("♻️ BashExecuter: Process terminated with status: \(task.terminationStatus)")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.clearObserver()
+                    if output?.trimmingCharacters(in: .whitespacesAndNewlines) == self.successCheck {
+                        callback(.success(true))
+                    } else {
+                        debugPrint("♻️⚠️ BashExecuter: Success Check failed")
+                        callback(.failure(.unknown))
+                    }
                 }
             }
-        }
 
-        do {
-            debugPrint("♻️ BashExecuter: Process starting")
-            try task.run()
-        } catch let error {
-            debugPrint("♻️ BashExecuter: Error running Process - \(error)")
-            callback(.failure(.unableToRun))
+            do {
+                debugPrint("♻️ BashExecuter: Process starting")
+                try task.run()
+                task.waitUntilExit()
+            } catch let error {
+                debugPrint("♻️ BashExecuter: Error running Process - \(error)")
+                DispatchQueue.main.async {
+                    callback(.failure(.unableToRun))
+                }
+            }
         }
     }
 
