@@ -11,7 +11,6 @@ password="$2"
 success="$3"
 
 exclusions=(
-    --exclude ".DS_Store"
     --exclude ".swp"
     --exclude ".git"
     --exclude ".command"
