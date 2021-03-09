@@ -67,19 +67,19 @@ public class BashExecuter {
             self.fileHandlerObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name.NSFileHandleDataAvailable, object: nil, queue: nil) {  [weak self] _ in
                 let data = outHandle.availableData
                 guard data.count > 0 else {
-                    outHandle.waitForDataInBackgroundAndNotify()
                     return
                 }
                 self?.output = String(data: data, encoding: .utf8)
                 debugPrint("♻️ BashExecuter: Process output: \(self?.output ?? "")")
-                outHandle.waitForDataInBackgroundAndNotify()
             }
 
 
             self.terminationObserver = NotificationCenter.default.addObserver(forName: Process.didTerminateNotification, object: nil, queue: nil) { [weak self] info in
                 guard let self = self else { return }
                 debugPrint("♻️ BashExecuter: Process terminated with status: \(task.terminationStatus)")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    guard let self = self else { return }
+                    outHandle.closeFile()
                     self.clearObserver()
                     if self.output?.trimmingCharacters(in: .whitespacesAndNewlines) == self.successCheck {
                         callback(.success(true))
